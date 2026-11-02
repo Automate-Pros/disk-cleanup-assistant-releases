@@ -1,6 +1,6 @@
 {
   "name": "disk-cleanup-assistant",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Find what is using disk space on Windows and clean it up safely.",
   "author": {
     "name": "Mark Johnson"

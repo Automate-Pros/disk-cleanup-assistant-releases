@@ -26,7 +26,9 @@ Steps 1 to 7 only read. Files change only through a plan (steps 8 to 10): `creat
    - `safe`: caches and temporary files that rebuild themselves, such as browser and package caches and Temp. Give each rule's action and its `regenerates` note.
    - `review`: the user's own things, such as old installers in Downloads and old app builds. They decide.
    - `caution`: removing these has a cost, such as rebuilding an idle project's `node_modules` or losing the way back to the previous Windows. Say what the cost is.
-   - `never_delete`: WinSxS, the page file, the hibernation file, virtual disks. Explain them, and give the supported way to shrink them where the action names one. Never count them as savings.
+   - `never_delete`: WinSxS, the page file, the hibernation file, virtual disks. Explain them, and where the rule has a `task`, say the plan can run it to shrink them (component cleanup, compacting a WSL disk, turning hibernation off). Never count them as savings.
+
+   A rule with a `task` is cleaned by Windows' own tools (Windows Temp, Windows Update downloads, Delivery Optimization, error reports, the previous Windows, the Recycle Bin): the plan runs that task as a `system_task` step. Most tasks run as administrator, so Windows asks the user to approve each one.
 
 5. **Look for duplicates** when large media, disk images or archives fill the drive, or the user asks. Follow the `find-duplicates` skill, which calls `find_duplicates`.
 
@@ -40,11 +42,15 @@ Steps 1 to 7 only read. Files change only through a plan (steps 8 to 10): `creat
    - say which large items are normal and managed by Windows, and which would be worth the user's review later;
    - say when the scan ran and how, from the summary.
 
-8. **Propose a plan, if the user wants space back.** Ask how much they need and what they value (projects, photos, games), then pick from the findings, safest first. Recycle by default: it can be undone. Use `delete` only for caches and temporary files the junk catalog marks `safe` (the tool refuses anything else), and `tool_clean` for a cache whose rule has a `clean_command`. Never put `never_delete` items or anything the user has not agreed to in a plan. Call `create_plan` with the drive and the items (full paths and actions).
+8. **Propose a plan, if the user wants space back.** Ask how much they need and what they value (projects, photos, games), then pick from the findings, safest first. Recycle by default: it can be undone. Use `delete` only for caches and temporary files the junk catalog marks `safe` (the tool refuses anything else), `tool_clean` for a cache whose rule has a `clean_command`, and `system_task` for a place whose rule has a `task` (give the place's path exactly as `find_known_junk` lists it). A `never_delete` item goes in a plan only as its rule's `system_task`, and only when the user asks for it by name. Emptying the Recycle Bin always runs last, and after it nothing recycled can be put back: say so, and include it only if the user agrees. Never put anything the user has not agreed to in a plan. Call `create_plan` with the drive and the items (full paths and actions).
 
-9. **Show the dry run and ask.** From the report, list each step with its size and action, the totals (`recycle_bytes` is freed only once the Recycle Bin is emptied; `delete_bytes` is freed at once and cannot be undone), and every refused item with its reason. Ask the user whether to run it. Only after the user says yes, call `execute_plan` with the `plan_id`; their client then asks them to approve it once more. If they decline, nothing changes: say so and stop.
+   Every change goes through a plan, so the dry run lists everything that will happen. Never give the user commands or scripts to run by hand. If something they want has no step type, say the tool can't do it yet.
 
-10. **Report what happened.** From `execute_plan`, say what was done, skipped and why (in use, changed since the scan, too large for the Recycle Bin), and the space recycled and deleted. Tell them recycled items stay in the Recycle Bin until they empty it, and that `undo_plan` puts them back. `list_journal` shows past plans; a plan with started steps was interrupted, and running it again finishes it.
+9. **Show the dry run and ask.** From the report, list each step with its size and action, the totals (`recycle_bytes` is freed only once the Recycle Bin is emptied; `delete_bytes` is freed at once and cannot be undone; `task_bytes` is what Windows' own tasks clean, each marked when it runs as administrator), and every refused item with its reason. Ask the user whether to run it. Only after the user says yes, call `execute_plan` with the `plan_id`; their client then asks them to approve it once more. If they decline, nothing changes: say so and stop.
+
+   If `execute_plan` cannot run at all, for example because the client's permission mode blocks it, the plan is still the whole job. Give the user one command to run in their own terminal, `dca run <plan id>`, using the full path of the plugin's `dca.exe`. It shows the same plan and asks them to type yes. Never replace the plan with commands or scripts of your own.
+
+10. **Report what happened.** From `execute_plan`, say what was done, skipped and why (in use, changed since the scan, too large for the Recycle Bin), and the space recycled and deleted, and for each Windows task what it freed (its note) or why it was skipped (the administrator prompt was declined). Tell them recycled items stay in the Recycle Bin until it is emptied (a later plan's `system_task` for `$Recycle.Bin` can do that), and that until then `undo_plan` puts them back. `list_journal` shows past plans; a plan with started steps was interrupted, and running it again finishes it.
 
 ## Things that are normal and large
 
