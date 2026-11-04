@@ -2,7 +2,7 @@
 
 A Claude Code plugin that finds what is using disk space on Windows and cleans it up safely: it reads the drive's master file table, explains what is large and why, finds known junk and duplicates, and carries out only the cleanup you approve, with undo.
 
-This repository holds the release builds of `dca.exe` and the plugin marketplace. The workflow that publishes each release writes everything here; don't edit it by hand.
+This repository holds the release builds of `dca.exe` and the desktop app `dca-app.exe`, and the plugin marketplace. The workflow that publishes each release writes everything here; don't edit it by hand.
 
 ## Install
 

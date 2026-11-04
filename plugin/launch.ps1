@@ -31,7 +31,9 @@ function Get-PinField([string] $name) {
 # .NET directly rather than Get-FileHash, which lives in a script module
 # that Windows PowerShell cannot load when started from PowerShell 7.
 function Get-Sha256([string] $path) {
-    $stream = [IO.File]::OpenRead($path)
+    # Shares Delete because a rename holds its file with delete access, and
+    # another launch may be moving the exe into place while this one reads.
+    $stream = [IO.File]::Open($path, 'Open', 'Read', 'Read, Delete')
     try {
         $sha = [Security.Cryptography.SHA256]::Create()
         [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
@@ -79,7 +81,28 @@ function Get-Release([string] $to) {
 
 $pin = @{ version = (Get-PinField 'version'); repo = (Get-PinField 'repo'); sha256 = (Get-PinField 'sha256') }
 
-function Test-Pinned { [IO.File]::Exists($exe) -and ((Get-Sha256 $exe) -eq $pin.sha256) }
+# File.Replace holds the exe to itself for a moment, so a read that fails is
+# tried again before the exe counts as not the pinned one.
+function Test-Pinned {
+    for ($try = 0; $try -lt 20; $try++) {
+        if (-not [IO.File]::Exists($exe)) { return $false }
+        try { return (Get-Sha256 $exe) -eq $pin.sha256 } catch { [Threading.Thread]::Sleep(50) }
+    }
+    $false
+}
+
+# Not Move-Item -Force: it deletes the destination before it renames, so a
+# launch that lost the race took away the exe the winner was about to start.
+# File.Move refuses when the exe is there, in one step; a launch that finds
+# the pinned exe leaves it, and only an exe that is not the pinned one is
+# replaced, also in one step.
+function Set-PinnedExe([string] $from) {
+    try {
+        [IO.File]::Move($from, $exe)
+        return
+    } catch { }
+    if (-not (Test-Pinned)) { [IO.File]::Replace($from, $exe, [NullString]::Value) }
+}
 
 $dev = [IO.File]::Exists([IO.Path]::Combine($bin, '.dev'))
 if (-not ($dev -or (Test-Pinned))) {
@@ -96,14 +119,16 @@ if (-not ($dev -or (Test-Pinned))) {
         Remove-Item -Force -LiteralPath $download
         Fail "the downloaded dca.exe does not match the plugin's pin (got $got, expected $($pin.sha256)); it was deleted, not run."
     }
-    try {
-        Move-Item -Force -LiteralPath $download -Destination $exe
-    } catch {
-        # Another session put the pinned exe there first and is running it.
-        Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $download
-        if (-not (Test-Pinned)) { Fail "could not put the downloaded dca.exe in $bin`: $_" }
-    }
+    $why = ''
+    try { Set-PinnedExe $download } catch { $why = ": $_" }
+    Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $download
+    if (-not (Test-Pinned)) { Fail "could not put the downloaded dca.exe in $bin$why" }
 }
 
+# When a start fails, Windows PowerShell may retry it through ShellExecute.
+# That runs dca.exe detached, with no pipes and no exit code, and `exit` with
+# nothing to pass on would report success.
+$global:LASTEXITCODE = $null
 & $exe @Rest
+if ($null -eq $LASTEXITCODE) { Fail "dca.exe started detached from this launcher, so it cannot be used." }
 exit $LASTEXITCODE
